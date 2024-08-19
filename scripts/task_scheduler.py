@@ -145,9 +145,11 @@ class Script(scripts.Script):
     def bind_enqueue_button(self, root: gr.Blocks):
         generate = self.generate_button
         is_img2img = self.is_img2img
+        def_dependencies = root.default_config.get_config().get("dependencies")
         dependencies: List[dict] = [
-            x for x in root.dependencies if x["trigger"] == "click" and generate._id in x["targets"]
+             x for x in def_dependencies if x["targets"][0][1] == "click" and generate._id == x["targets"][0][0]
         ]
+
 
         dependency: dict = None
         cnet_dependency: dict = None
@@ -163,11 +165,18 @@ class Script(scripts.Script):
             elif len(d["outputs"]) == 4:
                 dependency = d
 
+
         with root:
             if self.checkpoint_dropdown is not None:
                 self.checkpoint_dropdown.change(fn=self.on_checkpoint_changed, inputs=[self.checkpoint_dropdown])
 
-            fn_block = next(fn for fn in root.fns if compare_components_with_ids(fn.inputs, dependency["inputs"]))
+            fn_block = None
+            for key in root.fns:
+                if compare_components_with_ids(root.fns[key].inputs, dependency["inputs"]) == True:
+                    fn_block = root.fns[key]
+                    break
+
+            # fn_block = next(fn for fn in root.fns if compare_components_with_ids(fn.inputs, dependency["inputs"]))
             fn = self.wrap_register_ui_task()
             inputs = fn_block.inputs.copy()
             inputs.insert(0, self.checkpoint_dropdown)
