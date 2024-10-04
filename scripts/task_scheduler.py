@@ -12,7 +12,7 @@ from modules.shared import list_checkpoint_tiles, refresh_checkpoints
 from modules.cmd_args import parser
 from modules.ui import create_refresh_button
 from modules.ui_common import save_files
-from modules.sd_models import model_path
+from modules.sd_models import model_path, model_data, select_checkpoint
 from modules.generation_parameters_copypaste import (
     registered_param_bindings,
     register_paste_params_button,
@@ -200,6 +200,10 @@ class Script(scripts.Script):
                     outputs=cnet_fn_block.outputs,
                     queue=False,
                 )
+    
+    def dump(self, obj):
+        for attr in dir(obj):
+            print("obj.%s = %r" % (attr, getattr(obj, attr)))
 
     def wrap_register_ui_task(self):
         def f(request: gr.Request, *args):
@@ -219,8 +223,17 @@ class Script(scripts.Script):
                     task_name = task_id
                     task_id = str(uuid4())
 
+                
                 if checkpoint is None or checkpoint == "" or checkpoint == checkpoint_current:
-                    checkpoint = [shared.sd_model.sd_checkpoint_info.title]
+                    # print (shared)
+                    try:
+                        checkpoint = [shared.sd_model.sd_checkpoint_info.title]
+                    except:
+                        log.info ("FakeInitialModel loded at the moment")
+                        checkpoint_info = select_checkpoint()
+                        log.info ("checkpoint_info: " + checkpoint_info.title)
+                        checkpoint = [checkpoint_info.title]
+                        log.info ("Queuing with this checkpoint instead: " + checkpoint_info.title)
                 elif checkpoint == checkpoint_runtime:
                     checkpoint = [None]
                 elif checkpoint.endswith(" checkpoints)"):
@@ -231,14 +244,17 @@ class Script(scripts.Script):
 
             for i, c in enumerate(checkpoint):
                 t_id = task_id if i == 0 else f"{task_id}.{i}"
-                task_runner.register_ui_task(
-                    t_id,
-                    self.is_img2img,
-                    *args,
-                    checkpoint=c,
-                    task_name=task_name,
-                    request=request,
-                )
+                try:
+                    task_runner.register_ui_task(
+                        t_id,
+                        self.is_img2img,
+                        *args,
+                        checkpoint=c,
+                        task_name=task_name,
+                        request=request,
+                    )
+                except:
+                     log.error("[ArtVenture] Possible taskID conflict. Please try enqueing again")
 
             task_runner.execute_pending_tasks_threading()
 
