@@ -144,6 +144,8 @@ class Script(scripts.Script):
 
     def bind_enqueue_button(self, root: gr.Blocks):
         generate = self.generate_button
+        if generate is None or generate._id is None:
+            return
         is_img2img = self.is_img2img
         def_dependencies = root.default_config.get_config().get("dependencies")
         dependencies: List[dict] = [
