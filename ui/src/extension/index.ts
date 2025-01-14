@@ -35,6 +35,9 @@ import 'ag-grid-community/styles/ag-theme-alpine.css';
 import 'notyf/notyf.min.css';
 import './index.scss';
 
+const arrowUpIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>`
+const arrowDownIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>`
+
 let notyf: Notyf | undefined;
 
 declare global {
@@ -729,6 +732,56 @@ function initPendingTab() {
     updatePageMoveTimeout(api, pixel);
   };
 
+  /**
+   * Moves a selected task up or down in the task grid by swapping its priority with adjacent task
+   * @param api - The AG Grid API instance containing task data
+   * @param direction - The direction to move the task ('up' or 'down')
+   * @returns void
+   * 
+   * @remarks
+   * - If no task is selected, function returns without action
+   * - Tasks are sorted by priority before moving
+   * - Movement is bounded by the first (0) and last index of the task array
+   * - If task is already at the boundary (top/bottom), no movement occurs
+   * 
+   * @example
+   * ```typescript
+   * moveTaskUpDown(gridApi, 'up'); // Moves selected task up
+   * moveTaskUpDown(gridApi, 'down'); // Moves selected task down
+   * ```
+   */
+  function moveTaskUpDown(api: GridApi<Task>, direction: 'up' | 'down') {
+    const selectedNodes = api.getSelectedNodes();
+    if (!selectedNodes.length) return;
+  
+    const tasks = [...store.getState().pending_tasks].sort((a, b) => a.priority - b.priority);
+    const currentNode = selectedNodes[0];
+    const currentIndex = tasks.findIndex(t => t.id === currentNode.data?.id);
+    
+    if (currentIndex === -1) return;
+    
+    // Get target index
+    const targetIndex = direction === 'up' ? 
+      Math.max(0, currentIndex - 1) : 
+      Math.min(tasks.length - 1, currentIndex + 1);
+      
+    // Don't move if already at top/bottom
+    if (targetIndex === currentIndex) return;
+    
+    const targetId = tasks[targetIndex].id;
+    store.moveTask(currentNode.data!.id, targetId);
+  }
+  
+  // Add these buttons to your UI and wire up click handlers:
+/*   const upButton = document.createElement('button');
+  upButton.textContent = '↑';
+  upButton.onclick = () => moveTaskUpDown(gridApi, 'up');
+  
+  const downButton = document.createElement('button');
+  downButton.textContent = '↓'; 
+  downButton.onclick = () => moveTaskUpDown(gridApi, 'down');
+ */
+
   // init grid
   const gridOptions: GridOptions<Task> = {
     ...sharedGridOptions,
@@ -769,6 +822,12 @@ function initPendingTab() {
             </button>
           </div>
           <div class="inline-flex mt-1 control-actions" role="group">
+            <button type="button" title="Move Up" class="ts-btn-action secondary ts-btn-up">
+              ${arrowUpIcon}
+            </button>
+            <button type="button" title="Move Down" class="ts-btn-action secondary ts-btn-down">
+              ${arrowDownIcon}
+            </button>
             <button type="button" title="Run" class="ts-btn-action primary ts-btn-run"
               ${data.status === 'running' ? 'disabled' : ''}>
               ${playIcon}
