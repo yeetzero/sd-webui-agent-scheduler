@@ -15,11 +15,9 @@ import { Notyf } from 'notyf';
 
 import bookmark from '../assets/icons/bookmark.svg?raw';
 import bookmarked from '../assets/icons/bookmark-filled.svg?raw';
-import cancelIcon from '../assets/icons/cancel.svg?raw';
 import deleteIcon from '../assets/icons/delete.svg?raw';
 import playIcon from '../assets/icons/play.svg?raw';
 import rotateIcon from '../assets/icons/rotate.svg?raw';
-import saveIcon from '../assets/icons/save.svg?raw';
 import searchIcon from '../assets/icons/search.svg?raw';
 import { getHighlightPosition, getPixelOnRow, getRowNodeAtPixel } from '../utils/ag-grid';
 import { debounce } from '../utils/debounce';
@@ -37,6 +35,10 @@ import './index.scss';
 
 const arrowUpIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>`
 const arrowDownIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>`
+const moveToTopIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+  <path d="M6 12l6-6 6 6"/>
+  <path d="M6 17l6-6 6 6"/>
+</svg>`
 
 let notyf: Notyf | undefined;
 
@@ -753,34 +755,46 @@ function initPendingTab() {
   function moveTaskUpDown(api: GridApi<Task>, direction: 'up' | 'down') {
     const selectedNodes = api.getSelectedNodes();
     if (!selectedNodes.length) return;
-  
+
     const tasks = [...store.getState().pending_tasks].sort((a, b) => a.priority - b.priority);
+    
     const currentNode = selectedNodes[0];
     const currentIndex = tasks.findIndex(t => t.id === currentNode.data?.id);
     
-    if (currentIndex === -1) return;
+    // Bounds checking for both directions
+    if (direction === 'up' && (currentIndex === -1 || currentIndex === 0)) return;
+    if (direction === 'down' && currentIndex === -1) return;
     
-    // Get target index
+    // Special case: moving second-to-last row to bottom
+    if (direction === 'down' && currentIndex === tasks.length - 2) {
+        const lastTaskId = tasks[tasks.length - 1].id;
+        store.moveTask(lastTaskId, currentNode.data!.id)
+            .then(response => {
+                if (response.success) {
+                    setTimeout(() => {
+                        api.getDisplayedRowAtIndex(tasks.length - 1)?.setSelected(true);
+                    }, 100);
+                }
+            });
+        return;
+    }
+    
+    // Calculate target index
     const targetIndex = direction === 'up' ? 
-      Math.max(0, currentIndex - 1) : 
-      Math.min(tasks.length - 1, currentIndex + 1);
-      
-    // Don't move if already at top/bottom
-    if (targetIndex === currentIndex) return;
+        currentIndex - 1 : 
+        currentIndex + 2;
     
     const targetId = tasks[targetIndex].id;
-    store.moveTask(currentNode.data!.id, targetId);
-  }
-  
-  // Add these buttons to your UI and wire up click handlers:
-/*   const upButton = document.createElement('button');
-  upButton.textContent = '↑';
-  upButton.onclick = () => moveTaskUpDown(gridApi, 'up');
-  
-  const downButton = document.createElement('button');
-  downButton.textContent = '↓'; 
-  downButton.onclick = () => moveTaskUpDown(gridApi, 'down');
- */
+    
+    store.moveTask(currentNode.data!.id, targetId)
+        .then(response => {
+            if (response.success) {
+                setTimeout(() => {
+                    api.getDisplayedRowAtIndex(targetIndex)?.setSelected(true);
+                }, 100);
+            }
+        });
+}
 
   // init grid
   const gridOptions: GridOptions<Task> = {
@@ -802,71 +816,55 @@ function initPendingTab() {
       {
         headerName: 'Action',
         pinned: 'right',
-        minWidth: 110,
-        maxWidth: 110,
+        minWidth: 190,
+        maxWidth: 190,
         resizable: false,
         editable: false,
         valueGetter: ({ data }) => data?.id,
         cellClass: 'pending-actions',
-        cellRenderer: ({ api, value, data }: ICellRendererParams<Task, string>) => {
-          if (data == null || value == null) return;
-
+        cellRenderer: ({ api, data }: ICellRendererParams<Task, string>) => {
+          if (data == null) return;
+          
           const node = document.createElement('div');
           node.innerHTML = `
-          <div class="inline-flex mt-1 edit-actions" role="group">
-            <button type="button" title="Save" class="ts-btn-action primary ts-btn-save">
-              ${saveIcon}
-            </button>
-            <button type="button" title="Cancel" class="ts-btn-action secondary ts-btn-cancel">
-              ${cancelIcon}
-            </button>
-          </div>
-          <div class="inline-flex mt-1 control-actions" role="group">
-            <button type="button" title="Move Up" class="ts-btn-action secondary ts-btn-up">
-              ${arrowUpIcon}
-            </button>
-            <button type="button" title="Move Down" class="ts-btn-action secondary ts-btn-down">
-              ${arrowDownIcon}
-            </button>
-            <button type="button" title="Run" class="ts-btn-action primary ts-btn-run"
-              ${data.status === 'running' ? 'disabled' : ''}>
-              ${playIcon}
-            </button>
-            <button type="button" title="${data.status === 'pending' ? 'Delete' : 'Interrupt'}"
-              class="ts-btn-action stop ts-btn-delete">
-              ${data.status === 'pending' ? deleteIcon : cancelIcon}
-            </button>
-          </div>
+            <div class="inline-flex mt-1 control-actions" role="group">
+              <button type="button" title="Move to Top" class="ts-btn-action secondary ts-btn-top">
+                ${moveToTopIcon}
+              </button>
+              <button type="button" title="Move Up" class="ts-btn-action secondary ts-btn-up">
+                ${arrowUpIcon}
+              </button>
+              <button type="button" title="Move Down" class="ts-btn-action secondary ts-btn-down">
+                ${arrowDownIcon} 
+              </button>
+              <button type="button" title="Run" class="ts-btn-action primary ts-btn-run"
+                ${data.status === 'running' ? 'disabled' : ''}>
+                ${playIcon}
+              </button>
+              <button type="button" title="Delete" class="ts-btn-action stop ts-btn-delete">
+                ${deleteIcon}
+              </button>
+            </div>
           `;
 
-          const btnSave = node.querySelector<HTMLButtonElement>('button.ts-btn-save')!;
-          btnSave.addEventListener('click', () => {
-            api.showLoadingOverlay();
-            pendingStore.updateTask(data.id, data).then(res => {
-              notify(res);
-              api.hideOverlay();
-              api.stopEditing(false);
-            });
+          const btnTop = node.querySelector<HTMLButtonElement>('button.ts-btn-top')!;
+          btnTop.addEventListener('click', () => {
+            store.moveTask(data.id, 'top')
+              .then(response => {
+                if (response.success) {
+                  setTimeout(() => {
+                    api.getDisplayedRowAtIndex(0)?.setSelected(true);
+                  }, 100);
+                }
+              });
           });
 
-          const btnCancel = node.querySelector<HTMLButtonElement>('button.ts-btn-cancel')!;
-          btnCancel.addEventListener('click', () => api.stopEditing(true));
-
-          const btnRun = node.querySelector<HTMLButtonElement>('button.ts-btn-run')!;
-          btnRun.addEventListener('click', () => {
-            api.showLoadingOverlay();
-            store.runTask(value).then(() => api.hideOverlay());
-          });
-          const btnDelete = node.querySelector<HTMLButtonElement>('button.ts-btn-delete')!;
-          btnDelete.addEventListener('click', () => {
-            api.showLoadingOverlay();
-            store.deleteTask(value).then(res => {
-              notify(res);
-              api.applyTransaction({ remove: [data] });
-              api.hideOverlay();
-            });
-          });
-
+          const btnUp = node.querySelector<HTMLButtonElement>('button.ts-btn-up')!;
+          btnUp.addEventListener('click', () => moveTaskUpDown(api, 'up'));
+          
+          const btnDown = node.querySelector<HTMLButtonElement>('button.ts-btn-down')!;
+          btnDown.addEventListener('click', () => moveTaskUpDown(api, 'down'));        
+        
           return node;
         },
       },
@@ -1118,9 +1116,9 @@ function initHistoryTab() {
       {
         headerName: 'Action',
         pinned: 'right',
-        minWidth: 110,
-        maxWidth: 110,
-        resizable: false,
+        minWidth: 190,
+        maxWidth: 190,
+        resizable: true,
         valueGetter: ({ data }) => data?.id,
         cellRenderer: ({ api, data, value }: ICellRendererParams<Task, string | undefined>) => {
           if (data == null || value == null) return;
@@ -1154,7 +1152,6 @@ function initHistoryTab() {
               api.hideOverlay();
             });
           });
-
           return node;
         },
       },
