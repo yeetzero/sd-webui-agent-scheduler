@@ -19,6 +19,8 @@ import deleteIcon from '../assets/icons/delete.svg?raw';
 import playIcon from '../assets/icons/play.svg?raw';
 import rotateIcon from '../assets/icons/rotate.svg?raw';
 import searchIcon from '../assets/icons/search.svg?raw';
+import saveIcon from '../assets/icons/save.svg?raw';
+import cancelIcon from '../assets/icons/cancel.svg?raw';
 import { getHighlightPosition, getPixelOnRow, getRowNodeAtPixel } from '../utils/ag-grid';
 import { debounce } from '../utils/debounce';
 import { extractArgs } from '../utils/extract-args';
@@ -822,11 +824,19 @@ function initPendingTab() {
         editable: false,
         valueGetter: ({ data }) => data?.id,
         cellClass: 'pending-actions',
-        cellRenderer: ({ api, data }: ICellRendererParams<Task, string>) => {
-          if (data == null) return;
+        cellRenderer: ({ api, value, data }: ICellRendererParams<Task, string>) => {
+          if (data == null || value == null) return;
           
           const node = document.createElement('div');
           node.innerHTML = `
+          <div class="inline-flex mt-1 edit-actions" role="group">
+            <button type="button" title="Save" class="ts-btn-action primary ts-btn-save">
+              ${saveIcon}
+            </button>
+            <button type="button" title="Cancel" class="ts-btn-action secondary ts-btn-cancel">
+              ${cancelIcon}
+            </button>
+          </div>
             <div class="inline-flex mt-1 control-actions" role="group">
               <button type="button" title="Move to Top" class="ts-btn-action secondary ts-btn-top">
                 ${moveToTopIcon}
@@ -841,11 +851,41 @@ function initPendingTab() {
                 ${data.status === 'running' ? 'disabled' : ''}>
                 ${playIcon}
               </button>
-              <button type="button" title="Delete" class="ts-btn-action stop ts-btn-delete">
-                ${deleteIcon}
-              </button>
+            <button type="button" title="${data.status === 'pending' ? 'Delete' : 'Interrupt'}"
+              class="ts-btn-action stop ts-btn-delete">
+              ${data.status === 'pending' ? deleteIcon : cancelIcon}
+            </button>
             </div>
           `;
+
+          
+          const btnSave = node.querySelector<HTMLButtonElement>('button.ts-btn-save')!;
+          btnSave.addEventListener('click', () => {
+            api.showLoadingOverlay();
+            pendingStore.updateTask(data.id, data).then(res => {
+              notify(res);
+              api.hideOverlay();
+              api.stopEditing(false);
+            });
+          });
+
+          const btnCancel = node.querySelector<HTMLButtonElement>('button.ts-btn-cancel')!;
+          btnCancel.addEventListener('click', () => api.stopEditing(true));
+
+          const btnRun = node.querySelector<HTMLButtonElement>('button.ts-btn-run')!;
+          btnRun.addEventListener('click', () => {
+            api.showLoadingOverlay();
+            store.runTask(value).then(() => api.hideOverlay());
+          });
+          const btnDelete = node.querySelector<HTMLButtonElement>('button.ts-btn-delete')!;
+          btnDelete.addEventListener('click', () => {
+            api.showLoadingOverlay();
+            store.deleteTask(value).then(res => {
+              notify(res);
+              api.applyTransaction({ remove: [data] });
+              api.hideOverlay();
+            });
+          });
 
           const btnTop = node.querySelector<HTMLButtonElement>('button.ts-btn-top')!;
           btnTop.addEventListener('click', () => {
